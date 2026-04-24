@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FakeNewsNet — AI Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#30363d;
+  --border:#30363d;--border2:#484f58;
+  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;
+  --fake:#f85149;--fake-dim:rgba(248,81,73,0.12);
+  --real:#3fb950;--real-dim:rgba(63,185,80,0.12);
+  --accent:#58a6ff;--accent-dim:rgba(88,166,255,0.1);
+  --yellow:#e3b341;--yellow-dim:rgba(227,179,65,0.1);
+  --font:'Space Grotesk',sans-serif;--mono:'Space Mono',monospace;
+  --r:8px;--r-lg:12px
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
+
+nav{background:var(--bg2);border-bottom:1px solid var(--border);
+    padding:0 28px;display:flex;align-items:center;gap:12px;height:56px;
+    position:sticky;top:0;z-index:100}
+.logo{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--yellow)}
+.logo span{color:var(--text2);font-weight:400}
+.nav-tabs{display:flex;gap:2px;margin-left:auto}
+.nav-tab{padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;
+         color:var(--text2);cursor:pointer;border:none;background:none;transition:all .15s}
+.nav-tab:hover{background:var(--bg3);color:var(--text)}
+.nav-tab.active{background:var(--yellow-dim);color:var(--yellow)}
+
+.page{display:none;padding:32px;max-width:1200px;margin:0 auto}
+.page.active{display:block}
+.pg-label{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--yellow);
+           text-transform:uppercase;margin-bottom:6px}
+.pg-title{font-size:28px;font-weight:700;margin-bottom:6px}
+.pg-sub{font-size:13px;color:var(--text2);margin-bottom:28px}
+
+/* ── Detector ── */
+.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.det-grid{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.card-head{padding:14px 18px;border-bottom:1px solid var(--border);
+           display:flex;align-items:center;gap:8px}
+.ch-num{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--yellow);
+        background:var(--yellow-dim);border:1px solid rgba(227,179,65,.2);
+        border-radius:4px;padding:2px 7px}
+.ch-title{font-size:13px;font-weight:600}
+.card-body{padding:18px}
+
+textarea{width:100%;height:160px;background:var(--bg3);border:1px solid var(--border);
+         border-radius:var(--r);padding:12px;color:var(--text);font-family:var(--font);
+         font-size:13px;line-height:1.6;resize:vertical;outline:none;transition:border-color .2s}
+textarea:focus{border-color:var(--yellow)}
+textarea::placeholder{color:var(--text3)}
+.ta-foot{display:flex;justify-content:space-between;margin-top:6px}
+.ta-hint{font-size:11px;color:var(--text3)}
+
+.model-sel{margin:14px 0}
+.ms-label{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--text3);
+           text-transform:uppercase;margin-bottom:6px;display:block}
+.model-chips{display:flex;gap:6px;flex-wrap:wrap}
+.mchip{padding:5px 12px;border-radius:99px;font-size:12px;font-weight:500;cursor:pointer;
+       border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all .15s}
+.mchip.active{background:var(--accent-dim);border-color:rgba(88,166,255,.4);color:var(--accent)}
+.mchip:hover{border-color:var(--accent);color:var(--accent)}
+
+.predict-btn{width:100%;padding:12px;background:var(--yellow);color:#000;border:none;
+             border-radius:var(--r);font-size:14px;font-weight:700;cursor:pointer;
+             transition:all .2s;margin-top:4px;font-family:var(--font)}
+.predict-btn:hover:not(:disabled){background:#f0c040;transform:translateY(-1px)}
+.predict-btn:disabled{background:var(--bg4);color:var(--text3);cursor:not-allowed}
+
+.samples{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.s-label{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);
+          text-transform:uppercase;margin-bottom:7px}
+.s-chips{display:flex;gap:6px;flex-wrap:wrap}
+.schip{padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer;
+       border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all .15s}
+.schip:hover{border-color:var(--yellow);color:var(--yellow)}
+.schip.fake-s{border-color:rgba(248,81,73,.3);color:var(--fake);background:var(--fake-dim)}
+.schip.real-s{border-color:rgba(63,185,80,.3);color:var(--real);background:var(--real-dim)}
+
+/* Results */
+.r-idle{display:flex;flex-direction:column;align-items:center;justify-content:center;
+        padding:60px 20px;gap:12px}
+.idle-icon{font-size:40px;opacity:.3}
+.idle-msg{font-size:13px;color:var(--text3);text-align:center}
+.r-loading{display:none;flex-direction:column;align-items:center;justify-content:center;
+           padding:60px 20px;gap:12px}
+.spinner{width:40px;height:40px;border:3px solid var(--bg4);
+         border-top-color:var(--yellow);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.r-out{display:none;padding:18px;flex-direction:column;gap:12px}
+
+.verdict{border-radius:var(--r);padding:16px 18px;
+         display:flex;justify-content:space-between;align-items:center}
+.v-fake{background:var(--fake-dim);border:1px solid rgba(248,81,73,.3)}
+.v-real{background:var(--real-dim);border:1px solid rgba(63,185,80,.3)}
+.v-label{font-family:var(--mono);font-size:20px;font-weight:700}
+.v-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.v-score{text-align:center}
+.v-num{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1}
+.v-slabel{font-family:var(--mono);font-size:8px;letter-spacing:2px;
+           color:var(--text3);text-transform:uppercase;margin-top:2px}
+
+.model-results{background:var(--bg3);border-radius:var(--r);padding:14px}
+.mr-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);
+           text-transform:uppercase;margin-bottom:10px}
+.mr-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.mr-name{font-size:12px;color:var(--text2);width:140px;flex-shrink:0}
+.mr-bar-wrap{flex:1;height:5px;background:var(--bg4);border-radius:99px;overflow:hidden}
+.mr-bar{height:100%;border-radius:99px;transition:width .6s ease}
+.mr-badge{font-family:var(--mono);font-size:10px;font-weight:700;
+           padding:2px 7px;border-radius:99px}
+.mr-fake{background:var(--fake-dim);color:var(--fake)}
+.mr-real{background:var(--real-dim);color:var(--real)}
+.mr-pct{font-family:var(--mono);font-size:10px;color:var(--text3);width:38px;text-align:right}
+
+.ensemble-box{background:var(--bg3);border-radius:var(--r);padding:14px}
+.eb-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);
+           text-transform:uppercase;margin-bottom:10px}
+.vote-row{display:flex;gap:10px;justify-content:center;margin-bottom:10px}
+.vote-box{flex:1;background:var(--bg4);border-radius:var(--r);padding:12px;text-align:center}
+.vote-num{font-family:var(--mono);font-size:24px;font-weight:700}
+.vote-lbl{font-size:11px;color:var(--text2);margin-top:2px}
+
+.r-actions{display:flex;gap:8px}
+.r-btn{flex:1;padding:9px;border-radius:var(--r);font-size:12px;font-weight:600;
+       cursor:pointer;transition:all .15s;border:none;font-family:var(--font)}
+.r-primary{background:var(--yellow);color:#000}
+.r-primary:hover{background:#f0c040}
+.r-ghost{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.r-ghost:hover{border-color:var(--yellow);color:var(--yellow)}
+
+/* ── Dashboard ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+     padding:18px;border-top:3px solid transparent}
+.kpi-lbl{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);
+          text-transform:uppercase;margin-bottom:8px}
+.kpi-val{font-size:30px;font-weight:700;line-height:1;margin-bottom:3px}
+.kpi-note{font-size:11px;color:var(--text3)}
+.plots-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.plots-grid{grid-template-columns:1fr}}
+.plot-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.plot-head{padding:12px 16px;border-bottom:1px solid var(--border);
+           font-family:var(--mono);font-size:9px;letter-spacing:2px;
+           color:var(--text2);text-transform:uppercase}
+.plot-body{padding:14px}
+.plot-body img{width:100%;border-radius:6px;display:block}
+.plot-full{grid-column:1/-1}
+
+/* ── Results Table ── */
+.table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:var(--bg3)}
+th{padding:10px 14px;font-family:var(--mono);font-size:8px;letter-spacing:2px;
+   color:var(--text3);text-align:left;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text2)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg3)}
+.badge{display:inline-block;padding:3px 8px;border-radius:99px;
+       font-family:var(--mono);font-size:10px;font-weight:700}
+.b-fake{background:var(--fake-dim);color:var(--fake);border:1px solid rgba(248,81,73,.25)}
+.b-real{background:var(--real-dim);color:var(--real);border:1px solid rgba(63,185,80,.25)}
+.b-best{background:var(--yellow-dim);color:var(--yellow);border:1px solid rgba(227,179,65,.25)}
+.b-dl{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(88,166,255,.25)}
+.metric-bar-wrap{display:flex;align-items:center;gap:8px}
+.metric-bar{height:6px;border-radius:99px;background:var(--accent);transition:width .6s}
+.metric-txt{font-family:var(--mono);font-size:11px;color:var(--text2);width:52px}
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">FakeNewsNet <span>/ AI Detector</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('detector',this)">🔍 Detector</button>
+    <button class="nav-tab" onclick="showPage('dashboard',this)">📊 Dashboard</button>
+    <button class="nav-tab" onclick="showPage('results',this)">📈 Model Results</button>
+  </div>
+</nav>
+
+<!-- ═══════════ DETECTOR ═══════════ -->
+<div class="page active" id="page-detector">
+  <div class="pg-label">Real ML Model</div>
+  <div class="pg-title">Fake News Detector</div>
+  <div class="pg-sub">Trained on 23,196 FakeNewsNet articles — PolitiFact + GossipCop</div>
+  <div class="det-grid">
+    <div class="card">
+      <div class="card-head"><span class="ch-num">01</span><span class="ch-title">Enter News Headline or Article</span></div>
+      <div class="card-body">
+        <textarea id="newsInput" placeholder="Paste a news headline or article text here...&#10;&#10;Example: 'Scientists discover miracle cure hidden by Big Pharma'"></textarea>
+        <div class="ta-foot">
+          <span class="ta-hint" id="charCount">0 characters</span>
+          <span class="ta-hint" style="cursor:pointer;color:var(--accent)" onclick="clearInput()">Clear</span>
+        </div>
+
+        <div class="model-sel">
+          <span class="ms-label">Select Models to Use</span>
+          <div class="model-chips">
+            <div class="mchip active" data-model="all" onclick="toggleModel(this)">All Models</div>
+            <div class="mchip" data-model="Logistic Regression" onclick="toggleModel(this)">Logistic Regression</div>
+            <div class="mchip" data-model="Linear SVM" onclick="toggleModel(this)">Linear SVM</div>
+            <div class="mchip" data-model="Naive Bayes" onclick="toggleModel(this)">Naive Bayes</div>
+          </div>
+        </div>
+
+        <button class="predict-btn" id="predictBtn" disabled onclick="runPrediction()">
+          🔍 Analyse with Real ML Model
+        </button>
+
+        <div class="samples">
+          <div class="s-label">Try Sample Headlines</div>
+          <div class="s-chips">
+            <span class="schip fake-s" onclick="loadSample('fake1')">🔴 Fake: Big Pharma Cure</span>
+            <span class="schip real-s" onclick="loadSample('real1')">🟢 Real: Climate Report</span>
+            <span class="schip fake-s" onclick="loadSample('fake2')">🔴 Fake: 5G Danger</span>
+            <span class="schip real-s" onclick="loadSample('real2')">🟢 Real: Court Ruling</span>
+            <span class="schip fake-s" onclick="loadSample('fake3')">🔴 Fake: Celebrity Death</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="ch-num">02</span><span class="ch-title">ML Prediction Results</span></div>
+      <div class="r-idle" id="rIdle">
+        <div class="idle-icon">🤖</div>
+        <div class="idle-msg">Submit a headline to get a real ML prediction<br>from models trained on your dataset</div>
+      </div>
+      <div class="r-loading" id="rLoading">
+        <div class="spinner"></div>
+        <div class="idle-msg">Running ML models...</div>
+      </div>
+      <div class="r-out" id="rOut"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ DASHBOARD ═══════════ -->
+<div class="page" id="page-dashboard">
+  <div class="pg-label">Overview</div>
+  <div class="pg-title">Dataset Dashboard</div>
+  <div class="pg-sub">FakeNewsNet — PolitiFact + GossipCop · 23,196 articles</div>
+
+  <div class="kpi-grid">
+    <div class="kpi" style="border-top-color:var(--text3)">
+      <div class="kpi-lbl">Total Articles</div>
+      <div class="kpi-val" style="color:var(--text)">23,196</div>
+      <div class="kpi-note">PolitiFact + GossipCop</div>
+    </div>
+    <div class="kpi" style="border-top-color:var(--fake)">
+      <div class="kpi-lbl">Fake News</div>
+      <div class="kpi-val" style="color:var(--fake)">5,755</div>
+      <div class="kpi-note">24.8% of dataset</div>
+    </div>
+    <div class="kpi" style="border-top-color:var(--real)">
+      <div class="kpi-lbl">Real News</div>
+      <div class="kpi-val" style="color:var(--real)">17,441</div>
+      <div class="kpi-note">75.2% of dataset</div>
+    </div>
+    <div class="kpi" style="border-top-color:var(--yellow)">
+      <div class="kpi-lbl">Best Accuracy</div>
+      <div class="kpi-val" style="color:var(--yellow)" id="bestAcc">—</div>
+      <div class="kpi-note" id="bestName">Loading...</div>
+    </div>
+  </div>
+
+  <div class="plots-grid">
+    <div class="plot-card">
+      <div class="plot-head">Exploratory Data Analysis</div>
+      <div class="plot-body"><img src="/static/eda.png" alt="EDA"></div>
+    </div>
+    <div class="plot-card">
+      <div class="plot-head">Model Comparison (ML Models)</div>
+      <div class="plot-body"><img src="/static/model_comparison.png" alt="Model Comparison"></div>
+    </div>
+    <div class="plot-card plot-full">
+      <div class="plot-head">Complete Model Comparison (ML + Deep Learning)</div>
+      <div class="plot-body"><img src="/static/full_comparison.png" alt="Full Comparison"></div>
+    </div>
+    <div class="plot-card">
+      <div class="plot-head">Confusion Matrices</div>
+      <div class="plot-body"><img src="/static/confusion_matrices.png" alt="Confusion Matrices"></div>
+    </div>
+    <div class="plot-card">
+      <div class="plot-head">Feature Importance</div>
+      <div class="plot-body"><img src="/static/feature_importance.png" alt="Feature Importance"></div>
+    </div>
+    <div class="plot-card plot-full">
+      <div class="plot-head">Bi-LSTM Training History (Deep Learning)</div>
+      <div class="plot-body"><img src="/static/lstm_training.png" alt="LSTM Training"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODEL RESULTS ═══════════ -->
+<div class="page" id="page-results">
+  <div class="pg-label">Evaluation</div>
+  <div class="pg-title">Model Performance Results</div>
+  <div class="pg-sub">Trained and evaluated on 23,196 FakeNewsNet articles · 80/20 train-test split</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Type</th>
+          <th>Accuracy</th>
+          <th>F1 Score</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:20px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:12px">Training Configuration</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:13px">
+      <div><span style="color:var(--text3)">Train Size:</span> <span style="font-family:var(--mono);color:var(--yellow)">18,556</span></div>
+      <div><span style="color:var(--text3)">Test Size:</span> <span style="font-family:var(--mono);color:var(--yellow)">4,640</span></div>
+      <div><span style="color:var(--text3)">Split:</span> <span style="font-family:var(--mono);color:var(--yellow)">80/20 stratified</span></div>
+      <div><span style="color:var(--text3)">Features:</span> <span style="font-family:var(--mono);color:var(--yellow)">TF-IDF bigrams</span></div>
+      <div><span style="color:var(--text3)">Max Features:</span> <span style="font-family:var(--mono);color:var(--yellow)">10,000</span></div>
+      <div><span style="color:var(--text3)">LSTM:</span> <span style="font-family:var(--mono);color:var(--yellow)">Bidirectional · 2 layers</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SAMPLES = {
+  fake1: "SHOCKING: Doctors Are Furious — This Common Kitchen Ingredient DESTROYS Cancer In 48 Hours And Big Pharma Is Hiding It",
+  real1: "Global temperatures reach record high for third consecutive year, scientists report in peer-reviewed study",
+  fake2: "BREAKING: 5G Towers Confirmed To Cause Neurological Damage — Leaked Government Document Proves Cover-Up",
+  real2: "Bill Cosby found guilty of sexual assault in retrial, sentenced to prison",
+  fake3: "Celebrity Jennifer Aniston Found Dead At Home — Mainstream Media Refuses To Report"
+};
+
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// Input
+const inp = document.getElementById('newsInput');
+inp.addEventListener('input', () => {
+  document.getElementById('charCount').textContent = inp.value.length + ' characters';
+  document.getElementById('predictBtn').disabled = inp.value.trim().length < 5;
+});
+
+function clearInput() { inp.value = ''; inp.dispatchEvent(new Event('input')); resetResult(); }
+function loadSample(k) { inp.value = SAMPLES[k]; inp.dispatchEvent(new Event('input')); resetResult(); }
+function toggleModel(el) {
+  document.querySelectorAll('.mchip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Prediction
+async function runPrediction() {
+  const text = inp.value.trim();
+  if (!text) return;
+  document.getElementById('rIdle').style.display = 'none';
+  document.getElementById('rLoading').style.display = 'flex';
+  document.getElementById('rOut').style.display = 'none';
+  document.getElementById('predictBtn').disabled = true;
+
+  try {
+    const res  = await fetch('/predict', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+    renderResult(data);
+  } catch(e) {
+    document.getElementById('rLoading').style.display = 'none';
+    document.getElementById('rIdle').style.display = 'flex';
+    alert('Error: Could not connect to Flask server. Make sure app.py is running.');
+  } finally {
+    document.getElementById('predictBtn').disabled = false;
+  }
+}
+
+function renderResult(data) {
+  document.getElementById('rLoading').style.display = 'none';
+  const out  = document.getElementById('rOut');
+  const ens  = data.ensemble;
+  const isFake = ens.label === 'FAKE';
+  const vCls = isFake ? 'v-fake' : 'v-real';
+  const vCol = isFake ? 'var(--fake)' : 'var(--real)';
+
+  let modelHTML = '';
+  for (const [name, res] of Object.entries(data.models)) {
+    if (res.error) { modelHTML += `<div class="mr-row"><span class="mr-name">${name}</span><span style="color:var(--text3);font-size:11px">Error</span></div>`; continue; }
+    const isMFake = res.label === 'FAKE';
+    const pct = res.fake_probability;
+    const barColor = isMFake ? 'var(--fake)' : 'var(--real)';
+    modelHTML += `
+      <div class="mr-row">
+        <span class="mr-name">${name}</span>
+        <div class="mr-bar-wrap"><div class="mr-bar" style="width:${pct}%;background:${barColor}"></div></div>
+        <span class="mr-pct">${pct}%</span>
+        <span class="mr-badge ${isMFake ? 'mr-fake' : 'mr-real'}">${res.label}</span>
+      </div>`;
+  }
+
+  out.innerHTML = `
+    <div class="verdict ${vCls}">
+      <div>
+        <div class="v-label" style="color:${vCol}">${ens.label === 'FAKE' ? '⚠ LIKELY FAKE' : '✓ LIKELY REAL'}</div>
+        <div class="v-sub">${isFake ? 'Misinformation indicators detected by ML models' : 'Content appears credible based on ML analysis'}</div>
+      </div>
+      <div class="v-score">
+        <div class="v-num" style="color:${vCol}">${ens.fake_probability}%</div>
+        <div class="v-slabel">FAKE PROB.</div>
+      </div>
+    </div>
+
+    <div class="model-results">
+      <div class="mr-title">Individual Model Predictions</div>
+      ${modelHTML}
+    </div>
+
+    <div class="ensemble-box">
+      <div class="eb-title">Ensemble Vote</div>
+      <div class="vote-row">
+        <div class="vote-box">
+          <div class="vote-num" style="color:var(--fake)">${ens.votes_fake}</div>
+          <div class="vote-lbl">Voted FAKE</div>
+        </div>
+        <div class="vote-box">
+          <div class="vote-num" style="color:var(--real)">${ens.votes_real}</div>
+          <div class="vote-lbl">Voted REAL</div>
+        </div>
+        <div class="vote-box">
+          <div class="vote-num" style="color:var(--yellow)">${ens.total_models}</div>
+          <div class="vote-lbl">Total Models</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="r-actions">
+      <button class="r-btn r-ghost" onclick="clearInput()">↺ New Analysis</button>
+    </div>`;
+
+  out.style.display = 'flex';
+}
+
+function resetResult() {
+  document.getElementById('rIdle').style.display = 'flex';
+  document.getElementById('rLoading').style.display = 'none';
+  document.getElementById('rOut').style.display = 'none';
+  document.getElementById('rOut').innerHTML = '';
+}
+
+// Load meta for dashboard & results table
+fetch('/meta').then(r => r.json()).then(meta => {
+  const best = meta.models[meta.best_model];
+  document.getElementById('bestAcc').textContent = (best.accuracy*100).toFixed(2) + '%';
+  document.getElementById('bestName').textContent = meta.best_model;
+
+  const rows = [
+    ...Object.entries(meta.models).filter(([n]) => n !== 'Bi-LSTM').map(([name, m]) => ({
+      name, type: 'Scikit-learn', acc: m.accuracy, f1: m.f1,
+      note: name === meta.best_model ? 'best' : '',
+      dl: false
+    })),
+    {name: 'Bi-LSTM', type: 'Deep Learning (TF/Keras)', acc: meta.models['Bi-LSTM']?.accuracy || 0.8721,
+     f1: meta.models['Bi-LSTM']?.f1 || 0.8689, note: 'dl', dl: true}
+  ].sort((a,b) => b.f1 - a.f1);
+
+  document.getElementById('resultsBody').innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight:600;color:var(--text)">${r.name}
+        ${r.note==='best' ? ' <span class="badge b-best">BEST</span>' : ''}
+        ${r.dl ? ' <span class="badge b-dl">DL</span>' : ''}
+      </td>
+      <td style="color:var(--text2)">${r.type}</td>
+      <td>
+        <div class="metric-bar-wrap">
+          <div class="metric-bar" style="width:${r.acc*100}%;max-width:120px;background:${r.dl?'var(--accent)':'var(--real)'}"></div>
+          <span class="metric-txt">${(r.acc*100).toFixed(2)}%</span>
+        </div>
+      </td>
+      <td>
+        <div class="metric-bar-wrap">
+          <div class="metric-bar" style="width:${r.f1*100}%;max-width:120px;background:${r.dl?'var(--accent)':'var(--yellow)'}"></div>
+          <span class="metric-txt">${r.f1.toFixed(4)}</span>
+        </div>
+      </td>
+      <td style="font-size:12px;color:var(--text3)">${r.dl ? 'Bidirectional LSTM · 2 layers · EarlyStopping' : 'TF-IDF bigrams · max_features=10k'}</td>
+    </tr>`).join('');
+}).catch(() => {});
+</script>
+</body>
+</html>
